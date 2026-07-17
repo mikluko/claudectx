@@ -237,10 +237,12 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 		}
 		env = append(env, kv)
 	}
+	// Only ANTHROPIC_AUTH_TOKEN carries the key: Claude Code warns when
+	// both it and ANTHROPIC_API_KEY are set. Stale ANTHROPIC_API_KEY
+	// values are stripped above via managedEnvVars.
 	env = append(env,
 		"ANTHROPIC_BASE_URL="+prov.baseURL(),
 		"ANTHROPIC_AUTH_TOKEN="+key,
-		"ANTHROPIC_API_KEY="+key,
 	)
 	// Deterministic slot order regardless of map iteration.
 	for _, slot := range []string{"default", "opus", "sonnet", "haiku"} {

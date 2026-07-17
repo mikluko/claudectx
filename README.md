@@ -69,16 +69,16 @@ variables it manages, then sets:
 | Variable | Source |
 |---|---|
 | `ANTHROPIC_BASE_URL` | provider `base-url` (or type default) |
-| `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` | provider key |
+| `ANTHROPIC_AUTH_TOKEN` | provider key |
 | `ANTHROPIC_MODEL` | workingset `default` |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | workingset `opus` |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | workingset `sonnet` |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL` | workingset `haiku` |
 
-Both token variables are set because router integrations (e.g. the
-[Hugging Face guide](https://huggingface.co/docs/inference-providers/integrations/claude-code))
-expect the provider key in both. All other environment variables pass through
-unchanged.
+Only `ANTHROPIC_AUTH_TOKEN` carries the key: Claude Code warns when both it
+and `ANTHROPIC_API_KEY` are set. A stale `ANTHROPIC_API_KEY` from the parent
+shell is stripped along with the other managed variables. All other
+environment variables pass through unchanged.
 
 `--set-default` rewrites the manifest in place; comments and ordering are
 preserved.

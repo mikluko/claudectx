@@ -123,7 +123,6 @@ func TestBuildEnv(t *testing.T) {
 		"ANTHROPIC_LOG=debug",
 		"ANTHROPIC_BASE_URL=https://router.huggingface.co",
 		"ANTHROPIC_AUTH_TOKEN=hf_test_key",
-		"ANTHROPIC_API_KEY=hf_test_key",
 		"ANTHROPIC_MODEL=zai-org/GLM-5.1",
 		"ANTHROPIC_DEFAULT_OPUS_MODEL=zai-org/GLM-5.1",
 		"ANTHROPIC_DEFAULT_HAIKU_MODEL=Qwen/Qwen3-Coder-30B",
