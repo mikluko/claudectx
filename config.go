@@ -48,15 +48,16 @@ type Context struct {
 // modelEnvVars maps workingset model slots to the Claude Code environment
 // variables that carry them.
 var modelEnvVars = map[string][]string{
-	"default": {"ANTHROPIC_MODEL"},
-	"fable":   {"ANTHROPIC_DEFAULT_FABLE_MODEL"},
-	"opus":    {"ANTHROPIC_DEFAULT_OPUS_MODEL"},
-	"sonnet":  {"ANTHROPIC_DEFAULT_SONNET_MODEL"},
-	"haiku":   {"ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL"},
+	"default":  {"ANTHROPIC_MODEL"},
+	"fable":    {"ANTHROPIC_DEFAULT_FABLE_MODEL"},
+	"opus":     {"ANTHROPIC_DEFAULT_OPUS_MODEL"},
+	"sonnet":   {"ANTHROPIC_DEFAULT_SONNET_MODEL"},
+	"haiku":    {"ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL"},
+	"subagent": {"CLAUDE_CODE_SUBAGENT_MODEL"},
 }
 
 // modelSlots is the deterministic emission order for modelEnvVars.
-var modelSlots = []string{"default", "fable", "opus", "sonnet", "haiku"}
+var modelSlots = []string{"default", "fable", "opus", "sonnet", "haiku", "subagent"}
 
 // managedEnvVars is every variable claudectx owns: pre-existing values are
 // stripped from the environment before a context is applied so stale
@@ -71,6 +72,7 @@ var managedEnvVars = []string{
 	"ANTHROPIC_DEFAULT_OPUS_MODEL",
 	"ANTHROPIC_DEFAULT_SONNET_MODEL",
 	"ANTHROPIC_DEFAULT_HAIKU_MODEL",
+	"CLAUDE_CODE_SUBAGENT_MODEL",
 }
 
 func configPath() (string, error) {

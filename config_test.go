@@ -26,6 +26,7 @@ workingsets:
       fable: zai-org/GLM-5.1
       opus: zai-org/GLM-5.1
       haiku: Qwen/Qwen3-Coder-30B
+      subagent: Qwen/Qwen3-Coder-30B
 
 contexts:
   - name: glm-hf
@@ -164,6 +165,7 @@ func TestBuildEnv(t *testing.T) {
 		"ANTHROPIC_DEFAULT_OPUS_MODEL=zai-org/GLM-5.1",
 		"ANTHROPIC_DEFAULT_HAIKU_MODEL=Qwen/Qwen3-Coder-30B",
 		"ANTHROPIC_SMALL_FAST_MODEL=Qwen/Qwen3-Coder-30B",
+		"CLAUDE_CODE_SUBAGENT_MODEL=Qwen/Qwen3-Coder-30B",
 	}
 	if !slices.Equal(env, want) {
 		t.Errorf("env mismatch:\n got %q\nwant %q", env, want)

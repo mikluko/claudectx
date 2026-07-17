@@ -62,7 +62,7 @@ contexts:
 ```
 
 Model slots are optional; only present slots emit variables. Valid slots:
-`default`, `fable`, `opus`, `sonnet`, `haiku`.
+`default`, `fable`, `opus`, `sonnet`, `haiku`, `subagent`.
 
 ### Credentials
 
@@ -88,6 +88,7 @@ variables it manages, then sets:
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | workingset `opus` |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | workingset `sonnet` |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL` | workingset `haiku` |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | workingset `subagent` |
 
 Only `ANTHROPIC_AUTH_TOKEN` carries the key: Claude Code warns when both it
 and `ANTHROPIC_API_KEY` are set. A stale `ANTHROPIC_API_KEY` from the parent
