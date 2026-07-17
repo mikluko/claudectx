@@ -1,8 +1,8 @@
 # claudectx
 
-Launch [Claude Code](https://code.claude.com) against third-party
-Anthropic-compatible routers (Hugging Face, OpenRouter) using named contexts,
-kubeconfig-style.
+Launch [Claude Code](https://code.claude.com) against any Anthropic-compatible
+endpoint (Hugging Face router, OpenRouter, llama.cpp, local proxies, …) using
+named contexts, kubeconfig-style.
 
 A **provider** holds the router endpoint and credentials. A **workingset**
 maps Claude model slots to provider model IDs. A **context** wires a provider
@@ -38,11 +38,14 @@ current-context: glm-hf
 
 providers:
   - name: hf
-    type: huggingface            # base-url defaults to https://router.huggingface.co
+    base-url: https://router.huggingface.co
     api-key-file: ~/.config/claudectx/hf.token
   - name: or
-    type: openrouter             # base-url defaults to https://openrouter.ai/api
-    api-key: sk-or-...           # inline works too
+    base-url: https://openrouter.ai/api
+    api-key-op: work/Private/openrouter   # 1Password item
+  - name: local
+    base-url: http://localhost:8080
+    api-key: dummy                        # inline works too
 
 workingsets:
   - name: glm
@@ -61,6 +64,16 @@ contexts:
 Model slots are optional; only present slots emit variables. Valid slots:
 `default`, `fable`, `opus`, `sonnet`, `haiku`.
 
+### Credentials
+
+Exactly one of `api-key`, `api-key-file`, `api-key-op` per provider.
+
+`api-key-op` resolves a 1Password item through the `op` CLI at launch time.
+The reference is `account/vault/item`, `vault/item`, or bare `item` (names or
+IDs, as accepted by `op`). The item's `credential` field is used (API
+Credential category), falling back to its password field. Resolution fails
+fast when `op` is not installed or the item cannot be found.
+
 ### Environment contract
 
 For a non-`none` context, claudectx strips any pre-existing values of the
@@ -68,7 +81,7 @@ variables it manages, then sets:
 
 | Variable | Source |
 |---|---|
-| `ANTHROPIC_BASE_URL` | provider `base-url` (or type default) |
+| `ANTHROPIC_BASE_URL` | provider `base-url` (Claude Code appends `/v1/messages`) |
 | `ANTHROPIC_AUTH_TOKEN` | provider key |
 | `ANTHROPIC_MODEL` | workingset `default` |
 | `ANTHROPIC_DEFAULT_FABLE_MODEL` | workingset `fable` |

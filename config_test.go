@@ -13,10 +13,9 @@ current-context: glm-hf
 
 providers:
   - name: hf
-    type: huggingface
+    base-url: https://router.huggingface.co
     api-key: hf_test_key
   - name: or
-    type: openrouter
     base-url: https://openrouter.example/api
     api-key-file: KEYFILE
 
@@ -60,10 +59,10 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.CurrentContext != "glm-hf" {
 		t.Errorf("current-context = %q", cfg.CurrentContext)
 	}
-	if got := cfg.provider("hf").baseURL(); got != "https://router.huggingface.co" {
+	if got := cfg.provider("hf").BaseURL; got != "https://router.huggingface.co" {
 		t.Errorf("hf base url = %q", got)
 	}
-	if got := cfg.provider("or").baseURL(); got != "https://openrouter.example/api" {
+	if got := cfg.provider("or").BaseURL; got != "https://openrouter.example/api" {
 		t.Errorf("or base url = %q", got)
 	}
 }
@@ -71,23 +70,23 @@ func TestLoadConfig(t *testing.T) {
 func TestValidateErrors(t *testing.T) {
 	cases := map[string]string{
 		"unknown slot": `
-providers: [{name: p, type: openrouter, api-key: k}]
+providers: [{name: p, base-url: "https://x", api-key: k}]
 workingsets: [{name: w, models: {gpt4: x}}]
 contexts: [{name: c, provider: p, workingset: w}]`,
 		"unknown provider ref": `
-providers: [{name: p, type: openrouter, api-key: k}]
+providers: [{name: p, base-url: "https://x", api-key: k}]
 workingsets: [{name: w, models: {opus: x}}]
 contexts: [{name: c, provider: nope, workingset: w}]`,
 		"reserved context name": `
-providers: [{name: p, type: openrouter, api-key: k}]
+providers: [{name: p, base-url: "https://x", api-key: k}]
 workingsets: [{name: w, models: {opus: x}}]
 contexts: [{name: none, provider: p, workingset: w}]`,
 		"missing key": `
-providers: [{name: p, type: openrouter}]
+providers: [{name: p, base-url: "https://x"}]
 workingsets: []
 contexts: []`,
-		"unknown type without base-url": `
-providers: [{name: p, type: mystery, api-key: k}]
+		"missing base-url": `
+providers: [{name: p, api-key: k}]
 workingsets: []
 contexts: []`,
 	}

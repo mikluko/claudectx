@@ -22,11 +22,16 @@ type Config struct {
 }
 
 type Provider struct {
-	Name       string `yaml:"name"`
-	Type       string `yaml:"type,omitempty"` // huggingface | openrouter
-	BaseURL    string `yaml:"base-url,omitempty"`
+	Name string `yaml:"name"`
+	// BaseURL is any Anthropic-compatible endpoint; Claude Code appends
+	// /v1/messages to it. E.g. https://router.huggingface.co,
+	// https://openrouter.ai/api, or a local proxy.
+	BaseURL    string `yaml:"base-url"`
 	APIKey     string `yaml:"api-key,omitempty"`
 	APIKeyFile string `yaml:"api-key-file,omitempty"`
+	// APIKeyOP is a 1Password item reference resolved via the op CLI:
+	// "account/vault/item", "vault/item", or "item".
+	APIKeyOP string `yaml:"api-key-op,omitempty"`
 }
 
 type WorkingSet struct {
@@ -38,13 +43,6 @@ type Context struct {
 	Name       string `yaml:"name"`
 	Provider   string `yaml:"provider"`
 	WorkingSet string `yaml:"workingset"`
-}
-
-// defaultBaseURLs holds Anthropic-compatible endpoints per provider type.
-// Claude Code appends /v1/messages to ANTHROPIC_BASE_URL.
-var defaultBaseURLs = map[string]string{
-	"huggingface": "https://router.huggingface.co",
-	"openrouter":  "https://openrouter.ai/api",
 }
 
 // modelEnvVars maps workingset model slots to the Claude Code environment
@@ -111,11 +109,17 @@ func (c *Config) validate() error {
 			return fmt.Errorf("duplicate provider %q", p.Name)
 		}
 		providers[p.Name] = true
-		if p.BaseURL == "" && defaultBaseURLs[p.Type] == "" {
-			return fmt.Errorf("provider %q: unknown type %q and no base-url", p.Name, p.Type)
+		if p.BaseURL == "" {
+			return fmt.Errorf("provider %q: base-url required", p.Name)
 		}
-		if p.APIKey == "" && p.APIKeyFile == "" {
-			return fmt.Errorf("provider %q: one of api-key or api-key-file required", p.Name)
+		sources := 0
+		for _, s := range []string{p.APIKey, p.APIKeyFile, p.APIKeyOP} {
+			if s != "" {
+				sources++
+			}
+		}
+		if sources != 1 {
+			return fmt.Errorf("provider %q: exactly one of api-key, api-key-file, api-key-op required", p.Name)
 		}
 	}
 	workingsets := map[string]bool{}
@@ -187,16 +191,16 @@ func (c *Config) workingset(name string) *WorkingSet {
 	return nil
 }
 
-func (p *Provider) baseURL() string {
-	if p.BaseURL != "" {
-		return p.BaseURL
-	}
-	return defaultBaseURLs[p.Type]
-}
-
 func (p *Provider) apiKey() (string, error) {
-	if p.APIKey != "" {
+	switch {
+	case p.APIKey != "":
 		return p.APIKey, nil
+	case p.APIKeyOP != "":
+		key, err := opAPIKey(p.APIKeyOP)
+		if err != nil {
+			return "", fmt.Errorf("provider %q: %w", p.Name, err)
+		}
+		return key, nil
 	}
 	data, err := os.ReadFile(expandHome(p.APIKeyFile))
 	if err != nil {
@@ -246,7 +250,7 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 	// both it and ANTHROPIC_API_KEY are set. Stale ANTHROPIC_API_KEY
 	// values are stripped above via managedEnvVars.
 	env = append(env,
-		"ANTHROPIC_BASE_URL="+prov.baseURL(),
+		"ANTHROPIC_BASE_URL="+prov.BaseURL,
 		"ANTHROPIC_AUTH_TOKEN="+key,
 	)
 	// Deterministic slot order regardless of map iteration.
