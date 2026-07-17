@@ -1,0 +1,84 @@
+# claudectx
+
+Launch [Claude Code](https://code.claude.com) against third-party
+Anthropic-compatible routers (Hugging Face, OpenRouter) using named contexts,
+kubeconfig-style.
+
+A **provider** holds the router endpoint and credentials. A **workingset**
+maps Claude model slots to provider model IDs. A **context** wires a provider
+to a workingset. `claudectx` resolves the selected context into environment
+variables and `exec`s `claude`.
+
+## Install
+
+```sh
+go install github.com/mikluko/claudectx@latest
+```
+
+## Usage
+
+```sh
+claudectx --set-default NAME        # select the default context
+claudectx [claude args...]          # run the default context
+claudectx --context NAME [args...]  # run a named context
+claudectx --context none            # passthrough: run claude untouched
+```
+
+Everything after the first unrecognized argument is passed to `claude`
+verbatim. The reserved context name `none` runs `claude` with the environment
+exactly as-is — no variables set or stripped — and may also be set as the
+default.
+
+## Manifest
+
+`~/.config/claudectx/config.yaml` (override with `CLAUDECTX_CONFIG`):
+
+```yaml
+current-context: glm-hf
+
+providers:
+  - name: hf
+    type: huggingface            # base-url defaults to https://router.huggingface.co
+    api-key-file: ~/.config/claudectx/hf.token
+  - name: or
+    type: openrouter             # base-url defaults to https://openrouter.ai/api
+    api-key: sk-or-...           # inline works too
+
+workingsets:
+  - name: glm
+    models:
+      default: zai-org/GLM-5.1          # -> ANTHROPIC_MODEL
+      opus: zai-org/GLM-5.1             # -> ANTHROPIC_DEFAULT_OPUS_MODEL
+      sonnet: zai-org/GLM-5.1           # -> ANTHROPIC_DEFAULT_SONNET_MODEL
+      haiku: Qwen/Qwen3-Coder-30B-A3B-Instruct  # -> ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_SMALL_FAST_MODEL
+
+contexts:
+  - name: glm-hf
+    provider: hf
+    workingset: glm
+```
+
+Model slots are optional; only present slots emit variables. Valid slots:
+`default`, `opus`, `sonnet`, `haiku`.
+
+### Environment contract
+
+For a non-`none` context, claudectx strips any pre-existing values of the
+variables it manages, then sets:
+
+| Variable | Source |
+|---|---|
+| `ANTHROPIC_BASE_URL` | provider `base-url` (or type default) |
+| `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` | provider key |
+| `ANTHROPIC_MODEL` | workingset `default` |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | workingset `opus` |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | workingset `sonnet` |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL` | workingset `haiku` |
+
+Both token variables are set because router integrations (e.g. the
+[Hugging Face guide](https://huggingface.co/docs/inference-providers/integrations/claude-code))
+expect the provider key in both. All other environment variables pass through
+unchanged.
+
+`--set-default` rewrites the manifest in place; comments and ordering are
+preserved.
