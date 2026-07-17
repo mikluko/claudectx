@@ -29,6 +29,8 @@ func TestParseArgs(t *testing.T) {
 		{"context equals", []string{"--context=foo", "-p", "hi"},
 			cliArgs{context: true, contextName: "foo", passthrough: []string{"-p", "hi"}}},
 		{"help", []string{"--help"}, cliArgs{help: true}},
+		{"version", []string{"--version"}, cliArgs{version: true}},
+		{"version short", []string{"-v"}, cliArgs{version: true}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -37,6 +39,7 @@ func TestParseArgs(t *testing.T) {
 				t.Fatal(err)
 			}
 			if got.help != tc.want.help ||
+				got.version != tc.want.version ||
 				got.setDefault != tc.want.setDefault ||
 				got.setDefaultName != tc.want.setDefaultName ||
 				got.context != tc.want.context ||
@@ -78,8 +81,7 @@ func TestClaudeArgv(t *testing.T) {
 
 func TestContextModel(t *testing.T) {
 	cfg := &Config{
-		WorkingSets: []WorkingSet{{Name: "w", Models: map[string]string{"default": "m1"}}},
-		Contexts:    []Context{{Name: "c", Provider: "p", WorkingSet: "w"}},
+		Contexts: []Context{{Name: "c", Provider: "p", Models: map[string]string{"default": "m1"}}},
 	}
 	if got := cfg.contextModel("c"); got != "m1" {
 		t.Errorf("contextModel(c) = %q", got)
@@ -95,8 +97,8 @@ func TestContextModel(t *testing.T) {
 func TestContextLines(t *testing.T) {
 	cfg := &Config{
 		Contexts: []Context{
-			{Name: "glm-hf", Provider: "hf", WorkingSet: "glm"},
-			{Name: "x", Provider: "or", WorkingSet: "kimi"},
+			{Name: "glm-hf", Provider: "hf", Models: map[string]string{"default": "glm"}},
+			{Name: "x", Provider: "or", Models: map[string]string{"default": "kimi"}},
 		},
 	}
 	lines := contextLines(cfg)

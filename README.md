@@ -4,9 +4,9 @@ Launch [Claude Code](https://code.claude.com) against any Anthropic-compatible
 endpoint (Hugging Face router, OpenRouter, llama.cpp, local proxies, …) using
 named contexts, kubeconfig-style.
 
-A **provider** holds the router endpoint and credentials. A **workingset**
-maps Claude model slots to provider model IDs. A **context** wires a provider
-to a workingset. `claudectx` resolves the selected context into environment
+A **provider** holds the endpoint, credentials, and provider-specific
+environment. A **context** wires a provider to a map of Claude model slots →
+provider model IDs. `claudectx` resolves the selected context into environment
 variables and `exec`s `claude`.
 
 ## Install
@@ -34,31 +34,37 @@ default.
 `~/.config/claudectx/config.yaml` (override with `CLAUDECTX_CONFIG`):
 
 ```yaml
-current-context: glm-hf
+current-context: glm@hf
 
 providers:
   - name: hf
     base-url: https://router.huggingface.co
     api-key-file: ~/.config/claudectx/hf.token
-  - name: or
-    base-url: https://openrouter.ai/api
-    api-key-op: work/Private/openrouter   # 1Password item
+  - name: moonshot
+    base-url: https://api.moonshot.ai/anthropic
+    api-key-op: work/Private/moonshot     # 1Password item
+    env:
+      ENABLE_TOOL_SEARCH: "1"             # extra provider-specific vars
   - name: local
     base-url: http://localhost:8080
     api-key: dummy                        # inline works too
 
-workingsets:
-  - name: glm
+contexts:
+  - name: glm@hf
+    provider: hf
     models:
-      default: zai-org/GLM-5.1          # -> ANTHROPIC_MODEL
+      default: zai-org/GLM-5.1          # -> ANTHROPIC_MODEL and --model
       opus: zai-org/GLM-5.1             # -> ANTHROPIC_DEFAULT_OPUS_MODEL
       sonnet: zai-org/GLM-5.1           # -> ANTHROPIC_DEFAULT_SONNET_MODEL
       haiku: Qwen/Qwen3-Coder-30B-A3B-Instruct  # -> ANTHROPIC_DEFAULT_HAIKU_MODEL, ANTHROPIC_SMALL_FAST_MODEL
-
-contexts:
-  - name: glm-hf
-    provider: hf
-    workingset: glm
+  - name: kimi@moonshot
+    provider: moonshot
+    models:
+      default: kimi-k3
+      opus: kimi-k2.7-code
+      sonnet: kimi-k2.6
+      haiku: kimi-k2.6
+      subagent: kimi-k2.6               # -> CLAUDE_CODE_SUBAGENT_MODEL
 ```
 
 Model slots are optional; only present slots emit variables. Valid slots:
@@ -83,22 +89,23 @@ variables it manages, then sets:
 |---|---|
 | `ANTHROPIC_BASE_URL` | provider `base-url` (Claude Code appends `/v1/messages`) |
 | `ANTHROPIC_AUTH_TOKEN` | provider key |
-| `ANTHROPIC_MODEL` | workingset `default` |
-| `ANTHROPIC_DEFAULT_FABLE_MODEL` | workingset `fable` |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | workingset `opus` |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | workingset `sonnet` |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL` | workingset `haiku` |
-| `CLAUDE_CODE_SUBAGENT_MODEL` | workingset `subagent` |
+| `ANTHROPIC_MODEL` | models `default` |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL` | models `fable` |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | models `opus` |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | models `sonnet` |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL` | models `haiku` |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | models `subagent` |
+| provider `env` entries | verbatim, overriding inherited values |
 
 Only `ANTHROPIC_AUTH_TOKEN` carries the key: Claude Code warns when both it
 and `ANTHROPIC_API_KEY` are set. A stale `ANTHROPIC_API_KEY` from the parent
 shell is stripped along with the other managed variables. All other
 environment variables pass through unchanged.
 
-The workingset `default` model is additionally passed to claude as
-`--model`: a model pinned in Claude Code settings outranks the
-`ANTHROPIC_MODEL` environment variable, but the command line outranks
-settings. A `--model` you pass yourself takes precedence.
+The `default` model is additionally passed to claude as `--model`: a model
+pinned in Claude Code settings outranks the `ANTHROPIC_MODEL` environment
+variable, but the command line outranks settings. A `--model` you pass
+yourself takes precedence.
 
 `--set-default` rewrites the manifest in place; comments and ordering are
 preserved.

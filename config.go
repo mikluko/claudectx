@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,10 +16,9 @@ import (
 const NoneContext = "none"
 
 type Config struct {
-	CurrentContext string       `yaml:"current-context,omitempty"`
-	Providers      []Provider   `yaml:"providers"`
-	WorkingSets    []WorkingSet `yaml:"workingsets"`
-	Contexts       []Context    `yaml:"contexts"`
+	CurrentContext string     `yaml:"current-context,omitempty"`
+	Providers      []Provider `yaml:"providers"`
+	Contexts       []Context  `yaml:"contexts"`
 }
 
 type Provider struct {
@@ -32,17 +32,15 @@ type Provider struct {
 	// APIKeyOP is a 1Password item reference resolved via the op CLI:
 	// "account/vault/item", "vault/item", or "item".
 	APIKeyOP string `yaml:"api-key-op,omitempty"`
-}
-
-type WorkingSet struct {
-	Name   string            `yaml:"name"`
-	Models map[string]string `yaml:"models"`
+	// Env holds extra environment variables the provider needs, e.g.
+	// ENABLE_TOOL_SEARCH. Values here override inherited ones.
+	Env map[string]string `yaml:"env,omitempty"`
 }
 
 type Context struct {
-	Name       string `yaml:"name"`
-	Provider   string `yaml:"provider"`
-	WorkingSet string `yaml:"workingset"`
+	Name     string            `yaml:"name"`
+	Provider string            `yaml:"provider"`
+	Models   map[string]string `yaml:"models"`
 }
 
 // modelEnvVars maps workingset model slots to the Claude Code environment
@@ -124,21 +122,6 @@ func (c *Config) validate() error {
 			return fmt.Errorf("provider %q: exactly one of api-key, api-key-file, api-key-op required", p.Name)
 		}
 	}
-	workingsets := map[string]bool{}
-	for _, w := range c.WorkingSets {
-		if w.Name == "" {
-			return fmt.Errorf("workingset with empty name")
-		}
-		if workingsets[w.Name] {
-			return fmt.Errorf("duplicate workingset %q", w.Name)
-		}
-		workingsets[w.Name] = true
-		for slot := range w.Models {
-			if _, ok := modelEnvVars[slot]; !ok {
-				return fmt.Errorf("workingset %q: unknown model slot %q (valid: %s)", w.Name, slot, strings.Join(modelSlots, ", "))
-			}
-		}
-	}
 	contexts := map[string]bool{}
 	for _, x := range c.Contexts {
 		if x.Name == NoneContext {
@@ -151,8 +134,10 @@ func (c *Config) validate() error {
 		if !providers[x.Provider] {
 			return fmt.Errorf("context %q: unknown provider %q", x.Name, x.Provider)
 		}
-		if !workingsets[x.WorkingSet] {
-			return fmt.Errorf("context %q: unknown workingset %q", x.Name, x.WorkingSet)
+		for slot := range x.Models {
+			if _, ok := modelEnvVars[slot]; !ok {
+				return fmt.Errorf("context %q: unknown model slot %q (valid: %s)", x.Name, slot, strings.Join(modelSlots, ", "))
+			}
 		}
 	}
 	// A dangling current-context (e.g. after a context rename) must not
@@ -183,15 +168,6 @@ func (c *Config) provider(name string) *Provider {
 	for i := range c.Providers {
 		if c.Providers[i].Name == name {
 			return &c.Providers[i]
-		}
-	}
-	return nil
-}
-
-func (c *Config) workingset(name string) *WorkingSet {
-	for i := range c.WorkingSets {
-		if c.WorkingSets[i].Name == name {
-			return &c.WorkingSets[i]
 		}
 	}
 	return nil
@@ -239,15 +215,14 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 		return nil, err
 	}
 	prov := c.provider(ctx.Provider)
-	ws := c.workingset(ctx.WorkingSet)
 	key, err := prov.apiKey()
 	if err != nil {
 		return nil, err
 	}
 
-	env := make([]string, 0, len(base)+len(managedEnvVars))
+	env := make([]string, 0, len(base)+len(managedEnvVars)+len(prov.Env))
 	for _, kv := range base {
-		if isManagedEnv(kv) {
+		if isManagedEnv(kv) || isProviderEnv(kv, prov.Env) {
 			continue
 		}
 		env = append(env, kv)
@@ -261,7 +236,7 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 	)
 	// Deterministic slot order regardless of map iteration.
 	for _, slot := range modelSlots {
-		model := ws.Models[slot]
+		model := ctx.Models[slot]
 		if model == "" {
 			continue
 		}
@@ -269,20 +244,30 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 			env = append(env, v+"="+model)
 		}
 	}
+	for _, k := range slices.Sorted(maps.Keys(prov.Env)) {
+		env = append(env, k+"="+prov.Env[k])
+	}
 	return env, nil
 }
 
-// contextModel returns the workingset "default" model for a context, or ""
-// when the context is "none", unknown, or has no default slot.
+func isProviderEnv(kv string, provEnv map[string]string) bool {
+	name, _, ok := strings.Cut(kv, "=")
+	if !ok {
+		return false
+	}
+	_, present := provEnv[name]
+	return present
+}
+
+// contextModel returns the "default" model of a context, or "" when the
+// context is "none", unknown, or has no default slot.
 func (c *Config) contextModel(name string) string {
 	if name == NoneContext {
 		return ""
 	}
 	for _, x := range c.Contexts {
 		if x.Name == name {
-			if ws := c.workingset(x.WorkingSet); ws != nil {
-				return ws.Models["default"]
-			}
+			return x.Models["default"]
 		}
 	}
 	return ""

@@ -4,9 +4,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime/debug"
 	"strings"
 	"syscall"
 )
+
+// version is set via -ldflags "-X main.version=..." by release builds;
+// go-install builds fall back to module build info.
+var version string
+
+func versionString() string {
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "dev"
+}
 
 const usage = `claudectx — launch Claude Code with provider contexts
 
@@ -26,6 +41,7 @@ Manifest: ~/.config/claudectx/config.yaml (override with CLAUDECTX_CONFIG)
 
 type cliArgs struct {
 	help           bool
+	version        bool
 	setDefault     bool
 	setDefaultName string
 	context        bool
@@ -41,6 +57,11 @@ func parseArgs(args []string) (cliArgs, error) {
 		switch {
 		case a == "-h" || a == "--help":
 			c.help = true
+			return c, nil
+		// Only leading --version is claudectx's own; after --context or
+		// other flags it is passthrough for claude.
+		case i == 0 && (a == "-v" || a == "--version"):
+			c.version = true
 			return c, nil
 		case a == "--set-default":
 			c.setDefault = true
@@ -101,6 +122,16 @@ func run(args []string) error {
 	}
 	if c.help {
 		fmt.Print(usage)
+		return nil
+	}
+	if c.version {
+		fmt.Printf("%s (claudectx)\n", versionString())
+		if claude, err := exec.LookPath("claude"); err == nil {
+			out, err := exec.Command(claude, "--version").Output()
+			if err == nil {
+				fmt.Print(string(out))
+			}
+		}
 		return nil
 	}
 	if c.setDefault && c.context {

@@ -15,26 +15,25 @@ providers:
   - name: hf
     base-url: https://router.huggingface.co
     api-key: hf_test_key
+    env:
+      ENABLE_TOOL_SEARCH: "1"
   - name: or
     base-url: https://openrouter.example/api
     api-key-file: KEYFILE
 
-workingsets:
-  - name: glm
+contexts:
+  - name: glm-hf
+    provider: hf
     models:
       default: zai-org/GLM-5.1
       fable: zai-org/GLM-5.1
       opus: zai-org/GLM-5.1
       haiku: Qwen/Qwen3-Coder-30B
       subagent: Qwen/Qwen3-Coder-30B
-
-contexts:
-  - name: glm-hf
-    provider: hf
-    workingset: glm
   - name: glm-or
     provider: or
-    workingset: glm
+    models:
+      default: zai-org/GLM-5.1
 `
 
 func writeSample(t *testing.T) string {
@@ -72,23 +71,18 @@ func TestValidateErrors(t *testing.T) {
 	cases := map[string]string{
 		"unknown slot": `
 providers: [{name: p, base-url: "https://x", api-key: k}]
-workingsets: [{name: w, models: {gpt4: x}}]
-contexts: [{name: c, provider: p, workingset: w}]`,
+contexts: [{name: c, provider: p, models: {gpt4: x}}]`,
 		"unknown provider ref": `
 providers: [{name: p, base-url: "https://x", api-key: k}]
-workingsets: [{name: w, models: {opus: x}}]
-contexts: [{name: c, provider: nope, workingset: w}]`,
+contexts: [{name: c, provider: nope, models: {opus: x}}]`,
 		"reserved context name": `
 providers: [{name: p, base-url: "https://x", api-key: k}]
-workingsets: [{name: w, models: {opus: x}}]
-contexts: [{name: none, provider: p, workingset: w}]`,
+contexts: [{name: none, provider: p, models: {opus: x}}]`,
 		"missing key": `
 providers: [{name: p, base-url: "https://x"}]
-workingsets: []
 contexts: []`,
 		"missing base-url": `
 providers: [{name: p, api-key: k}]
-workingsets: []
 contexts: []`,
 	}
 	for name, content := range cases {
@@ -149,6 +143,7 @@ func TestBuildEnv(t *testing.T) {
 		"PATH=/usr/bin",
 		"ANTHROPIC_API_KEY=stale",
 		"ANTHROPIC_MODEL=stale-model",
+		"ENABLE_TOOL_SEARCH=stale",
 		"ANTHROPIC_LOG=debug",
 	}
 	env, err := cfg.buildEnv("glm-hf", base)
@@ -166,6 +161,7 @@ func TestBuildEnv(t *testing.T) {
 		"ANTHROPIC_DEFAULT_HAIKU_MODEL=Qwen/Qwen3-Coder-30B",
 		"ANTHROPIC_SMALL_FAST_MODEL=Qwen/Qwen3-Coder-30B",
 		"CLAUDE_CODE_SUBAGENT_MODEL=Qwen/Qwen3-Coder-30B",
+		"ENABLE_TOOL_SEARCH=1",
 	}
 	if !slices.Equal(env, want) {
 		t.Errorf("env mismatch:\n got %q\nwant %q", env, want)

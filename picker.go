@@ -18,7 +18,7 @@ func contextLines(cfg *Config) []string {
 	}
 	lines := make([]string, 0, len(cfg.Contexts)+1)
 	for _, x := range cfg.Contexts {
-		lines = append(lines, fmt.Sprintf("%-*s  provider=%s workingset=%s", width, x.Name, x.Provider, x.WorkingSet))
+		lines = append(lines, fmt.Sprintf("%-*s  provider=%s model=%s", width, x.Name, x.Provider, x.Models["default"]))
 	}
 	lines = append(lines, fmt.Sprintf("%-*s  passthrough, environment untouched", width, NoneContext))
 	return lines
