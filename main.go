@@ -12,14 +12,80 @@ const usage = `claudectx — launch Claude Code with provider contexts
 
 Usage:
   claudectx [claude args...]                 run the default context
-  claudectx --context NAME [claude args...]  run the named context
-  claudectx --set-default NAME               select the default context
+  claudectx --context [NAME] [claude args..] run the named context
+  claudectx --set-default [NAME]             select the default context
+
+When NAME is omitted (and when running without a default context set),
+an interactive fzf selector is presented on TTYs.
 
 The reserved context name "none" runs claude with the environment
 untouched, as if claudectx were not involved.
 
 Manifest: ~/.config/claudectx/config.yaml (override with CLAUDECTX_CONFIG)
 `
+
+type cliArgs struct {
+	help           bool
+	setDefault     bool
+	setDefaultName string
+	context        bool
+	contextName    string
+	passthrough    []string
+}
+
+func parseArgs(args []string) (cliArgs, error) {
+	var c cliArgs
+	i := 0
+	for i < len(args) {
+		a := args[i]
+		switch {
+		case a == "-h" || a == "--help":
+			c.help = true
+			return c, nil
+		case a == "--set-default":
+			c.setDefault = true
+			if v, ok := flagValue(args, i); ok {
+				c.setDefaultName = v
+				i++
+			}
+			i++
+		case strings.HasPrefix(a, "--set-default="):
+			c.setDefault = true
+			c.setDefaultName = strings.TrimPrefix(a, "--set-default=")
+			i++
+		case a == "--context":
+			c.context = true
+			if v, ok := flagValue(args, i); ok {
+				c.contextName = v
+				i++
+			}
+			i++
+		case strings.HasPrefix(a, "--context="):
+			c.context = true
+			c.contextName = strings.TrimPrefix(a, "--context=")
+			i++
+		default:
+			// Everything from the first unrecognized argument on is
+			// passed to claude verbatim.
+			c.passthrough = args[i:]
+			return c, nil
+		}
+	}
+	return c, nil
+}
+
+// flagValue returns the argument following args[i] when it looks like a
+// value rather than another flag. Context names never start with "-".
+func flagValue(args []string, i int) (string, bool) {
+	if i+1 >= len(args) {
+		return "", false
+	}
+	v := args[i+1]
+	if v == "" || strings.HasPrefix(v, "-") {
+		return "", false
+	}
+	return v, true
+}
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -29,44 +95,15 @@ func main() {
 }
 
 func run(args []string) error {
-	var setDefaultName, contextName string
-	var passthrough []string
-
-	i := 0
-loop:
-	for i < len(args) {
-		a := args[i]
-		switch {
-		case a == "-h" || a == "--help":
-			fmt.Print(usage)
-			return nil
-		case a == "--set-default":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--set-default requires a context name")
-			}
-			setDefaultName = args[i+1]
-			i += 2
-		case strings.HasPrefix(a, "--set-default="):
-			setDefaultName = strings.TrimPrefix(a, "--set-default=")
-			i++
-		case a == "--context":
-			if i+1 >= len(args) {
-				return fmt.Errorf("--context requires a context name")
-			}
-			contextName = args[i+1]
-			i += 2
-		case strings.HasPrefix(a, "--context="):
-			contextName = strings.TrimPrefix(a, "--context=")
-			i++
-		default:
-			// Everything from the first unrecognized argument on is
-			// passed to claude verbatim.
-			passthrough = args[i:]
-			break loop
-		}
+	c, err := parseArgs(args)
+	if err != nil {
+		return err
 	}
-
-	if setDefaultName != "" && contextName != "" {
+	if c.help {
+		fmt.Print(usage)
+		return nil
+	}
+	if c.setDefault && c.context {
 		return fmt.Errorf("--set-default and --context are mutually exclusive")
 	}
 
@@ -74,31 +111,42 @@ loop:
 	if err != nil {
 		return err
 	}
-
-	if setDefaultName != "" {
-		if len(passthrough) > 0 {
-			return fmt.Errorf("unexpected arguments after --set-default: %s", strings.Join(passthrough, " "))
-		}
-		if err := setDefault(path, setDefaultName); err != nil {
-			return err
-		}
-		fmt.Printf("default context set to %q\n", setDefaultName)
-		return nil
-	}
-
 	cfg, err := loadConfig(path)
 	if err != nil {
 		return err
 	}
 
-	if contextName == "" {
-		contextName = cfg.CurrentContext
-		if contextName == "" {
-			return fmt.Errorf("no default context; select one with --set-default or run with --context")
+	if c.setDefault {
+		if len(c.passthrough) > 0 {
+			return fmt.Errorf("unexpected arguments after --set-default: %s", strings.Join(c.passthrough, " "))
+		}
+		name := c.setDefaultName
+		if name == "" {
+			if name, err = pickContext(cfg); err != nil {
+				return err
+			}
+		}
+		if err := setDefault(path, name); err != nil {
+			return err
+		}
+		fmt.Printf("default context set to %q\n", name)
+		return nil
+	}
+
+	name := c.contextName
+	if name == "" && !c.context {
+		name = cfg.CurrentContext
+	}
+	if name == "" {
+		if name, err = pickContext(cfg); err != nil {
+			if c.context {
+				return err
+			}
+			return fmt.Errorf("no default context: %w (or select one with --set-default)", err)
 		}
 	}
 
-	env, err := cfg.buildEnv(contextName, os.Environ())
+	env, err := cfg.buildEnv(name, os.Environ())
 	if err != nil {
 		return err
 	}
@@ -107,6 +155,6 @@ loop:
 	if err != nil {
 		return fmt.Errorf("claude not found in PATH: %w", err)
 	}
-	argv := append([]string{claude}, passthrough...)
+	argv := append([]string{claude}, c.passthrough...)
 	return syscall.Exec(claude, argv, env)
 }

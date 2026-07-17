@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -256,15 +257,7 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 
 func isManagedEnv(kv string) bool {
 	name, _, ok := strings.Cut(kv, "=")
-	if !ok {
-		return false
-	}
-	for _, m := range managedEnvVars {
-		if name == m {
-			return true
-		}
-	}
-	return false
+	return ok && slices.Contains(managedEnvVars, name)
 }
 
 // setDefault updates current-context in the manifest file in place,
