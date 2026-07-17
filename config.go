@@ -153,8 +153,12 @@ func (c *Config) validate() error {
 			return fmt.Errorf("context %q: unknown workingset %q", x.Name, x.WorkingSet)
 		}
 	}
+	// A dangling current-context (e.g. after a context rename) must not
+	// fail the load: that would break --set-default too and leave the
+	// manifest unfixable from the CLI. Treat it as no default instead.
 	if c.CurrentContext != "" && c.CurrentContext != NoneContext && !contexts[c.CurrentContext] {
-		return fmt.Errorf("current-context %q: no such context", c.CurrentContext)
+		fmt.Fprintf(os.Stderr, "claudectx: ignoring current-context %q: no such context\n", c.CurrentContext)
+		c.CurrentContext = ""
 	}
 	return nil
 }

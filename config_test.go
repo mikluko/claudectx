@@ -103,6 +103,42 @@ contexts: []`,
 	}
 }
 
+func TestDanglingCurrentContext(t *testing.T) {
+	// A current-context that references a renamed/removed context must
+	// load as empty default, not fail — otherwise --set-default cannot
+	// repair the manifest.
+	content := strings.Replace(sampleConfig, "current-context: glm-hf", "current-context: renamed-away", 1)
+	dir := t.TempDir()
+	keyfile := filepath.Join(dir, "key")
+	if err := os.WriteFile(keyfile, []byte("k"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	content = strings.ReplaceAll(content, "KEYFILE", keyfile)
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadConfig(path)
+	if err != nil {
+		t.Fatalf("dangling current-context must not fail load: %v", err)
+	}
+	if cfg.CurrentContext != "" {
+		t.Errorf("current-context = %q, want empty", cfg.CurrentContext)
+	}
+	// And --set-default can repair it.
+	if err := setDefault(path, "glm-hf"); err != nil {
+		t.Fatalf("setDefault on dangling manifest: %v", err)
+	}
+	cfg, err = loadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.CurrentContext != "glm-hf" {
+		t.Errorf("current-context = %q after repair", cfg.CurrentContext)
+	}
+}
+
 func TestBuildEnv(t *testing.T) {
 	cfg, err := loadConfig(writeSample(t))
 	if err != nil {
