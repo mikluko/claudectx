@@ -109,3 +109,12 @@ yourself takes precedence.
 
 `--set-default` rewrites the manifest in place; comments and ordering are
 preserved.
+
+### Sessions are provider-bound
+
+Conversation history carries provider-specific artifacts (thinking-block
+signatures, server-tool blocks, model references). Resuming a session that
+was started against a different provider replays that history and typically
+fails with provider errors (HTTP 500 retry loops). Start a fresh session
+after switching contexts; use `--resume`/`--continue` only within the same
+provider.
