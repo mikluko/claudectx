@@ -155,6 +155,27 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("claude not found in PATH: %w", err)
 	}
-	argv := append([]string{claude}, c.passthrough...)
+	argv := claudeArgv(claude, cfg.contextModel(name), c.passthrough)
 	return syscall.Exec(claude, argv, env)
+}
+
+// claudeArgv builds the claude argument vector. The workingset default model
+// is also passed as --model: a model pinned in Claude Code settings outranks
+// the ANTHROPIC_MODEL environment variable, but the command line outranks
+// settings. Skipped when the user supplies their own --model.
+func claudeArgv(claude, model string, passthrough []string) []string {
+	argv := []string{claude}
+	if model != "" && !hasModelFlag(passthrough) {
+		argv = append(argv, "--model", model)
+	}
+	return append(argv, passthrough...)
+}
+
+func hasModelFlag(args []string) bool {
+	for _, a := range args {
+		if a == "--model" || strings.HasPrefix(a, "--model=") {
+			return true
+		}
+	}
+	return false
 }

@@ -24,6 +24,7 @@ workingsets:
   - name: glm
     models:
       default: zai-org/GLM-5.1
+      fable: zai-org/GLM-5.1
       opus: zai-org/GLM-5.1
       haiku: Qwen/Qwen3-Coder-30B
 
@@ -124,6 +125,7 @@ func TestBuildEnv(t *testing.T) {
 		"ANTHROPIC_BASE_URL=https://router.huggingface.co",
 		"ANTHROPIC_AUTH_TOKEN=hf_test_key",
 		"ANTHROPIC_MODEL=zai-org/GLM-5.1",
+		"ANTHROPIC_DEFAULT_FABLE_MODEL=zai-org/GLM-5.1",
 		"ANTHROPIC_DEFAULT_OPUS_MODEL=zai-org/GLM-5.1",
 		"ANTHROPIC_DEFAULT_HAIKU_MODEL=Qwen/Qwen3-Coder-30B",
 		"ANTHROPIC_SMALL_FAST_MODEL=Qwen/Qwen3-Coder-30B",

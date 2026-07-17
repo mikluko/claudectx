@@ -48,6 +48,50 @@ func TestParseArgs(t *testing.T) {
 	}
 }
 
+func TestClaudeArgv(t *testing.T) {
+	cases := []struct {
+		name        string
+		model       string
+		passthrough []string
+		want        []string
+	}{
+		{"inject for bare run", "m1", nil,
+			[]string{"claude", "--model", "m1"}},
+		{"inject before passthrough", "m1", []string{"-p", "hi"},
+			[]string{"claude", "--model", "m1", "-p", "hi"}},
+		{"user --model wins", "m1", []string{"--model", "m2"},
+			[]string{"claude", "--model", "m2"}},
+		{"user --model= wins", "m1", []string{"--model=m2"},
+			[]string{"claude", "--model=m2"}},
+		{"no default slot", "", []string{"-p", "hi"},
+			[]string{"claude", "-p", "hi"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := claudeArgv("claude", tc.model, tc.passthrough)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestContextModel(t *testing.T) {
+	cfg := &Config{
+		WorkingSets: []WorkingSet{{Name: "w", Models: map[string]string{"default": "m1"}}},
+		Contexts:    []Context{{Name: "c", Provider: "p", WorkingSet: "w"}},
+	}
+	if got := cfg.contextModel("c"); got != "m1" {
+		t.Errorf("contextModel(c) = %q", got)
+	}
+	if got := cfg.contextModel(NoneContext); got != "" {
+		t.Errorf("contextModel(none) = %q", got)
+	}
+	if got := cfg.contextModel("nope"); got != "" {
+		t.Errorf("contextModel(nope) = %q", got)
+	}
+}
+
 func TestContextLines(t *testing.T) {
 	cfg := &Config{
 		Contexts: []Context{

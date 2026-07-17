@@ -51,10 +51,14 @@ var defaultBaseURLs = map[string]string{
 // variables that carry them.
 var modelEnvVars = map[string][]string{
 	"default": {"ANTHROPIC_MODEL"},
+	"fable":   {"ANTHROPIC_DEFAULT_FABLE_MODEL"},
 	"opus":    {"ANTHROPIC_DEFAULT_OPUS_MODEL"},
 	"sonnet":  {"ANTHROPIC_DEFAULT_SONNET_MODEL"},
 	"haiku":   {"ANTHROPIC_DEFAULT_HAIKU_MODEL", "ANTHROPIC_SMALL_FAST_MODEL"},
 }
+
+// modelSlots is the deterministic emission order for modelEnvVars.
+var modelSlots = []string{"default", "fable", "opus", "sonnet", "haiku"}
 
 // managedEnvVars is every variable claudectx owns: pre-existing values are
 // stripped from the environment before a context is applied so stale
@@ -65,6 +69,7 @@ var managedEnvVars = []string{
 	"ANTHROPIC_API_KEY",
 	"ANTHROPIC_MODEL",
 	"ANTHROPIC_SMALL_FAST_MODEL",
+	"ANTHROPIC_DEFAULT_FABLE_MODEL",
 	"ANTHROPIC_DEFAULT_OPUS_MODEL",
 	"ANTHROPIC_DEFAULT_SONNET_MODEL",
 	"ANTHROPIC_DEFAULT_HAIKU_MODEL",
@@ -124,7 +129,7 @@ func (c *Config) validate() error {
 		workingsets[w.Name] = true
 		for slot := range w.Models {
 			if _, ok := modelEnvVars[slot]; !ok {
-				return fmt.Errorf("workingset %q: unknown model slot %q (valid: default, opus, sonnet, haiku)", w.Name, slot)
+				return fmt.Errorf("workingset %q: unknown model slot %q (valid: %s)", w.Name, slot, strings.Join(modelSlots, ", "))
 			}
 		}
 	}
@@ -245,7 +250,7 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 		"ANTHROPIC_AUTH_TOKEN="+key,
 	)
 	// Deterministic slot order regardless of map iteration.
-	for _, slot := range []string{"default", "opus", "sonnet", "haiku"} {
+	for _, slot := range modelSlots {
 		model := ws.Models[slot]
 		if model == "" {
 			continue
@@ -255,6 +260,22 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 		}
 	}
 	return env, nil
+}
+
+// contextModel returns the workingset "default" model for a context, or ""
+// when the context is "none", unknown, or has no default slot.
+func (c *Config) contextModel(name string) string {
+	if name == NoneContext {
+		return ""
+	}
+	for _, x := range c.Contexts {
+		if x.Name == name {
+			if ws := c.workingset(x.WorkingSet); ws != nil {
+				return ws.Models["default"]
+			}
+		}
+	}
+	return ""
 }
 
 func isManagedEnv(kv string) bool {
