@@ -6,8 +6,12 @@ named contexts, kubeconfig-style.
 
 A **provider** holds the endpoint, credentials, and provider-specific
 environment. A **context** wires a provider to a map of Claude model slots →
-provider model IDs. `claudectx` resolves the selected context into environment
-variables and `exec`s `claude`.
+provider model IDs, and/or a **config dir** — a self-contained Claude Code
+profile with its own credentials, settings, and session store. `claudectx`
+resolves the selected context into environment variables and `exec`s `claude`.
+
+A context with a `config-dir` and no provider is *first-party*: it switches
+Claude Code accounts rather than endpoints.
 
 ## Install
 
@@ -50,8 +54,14 @@ providers:
     api-key: dummy                        # inline works too
 
 contexts:
+  # First-party: no provider, just a Claude Code profile to switch to.
+  - name: work
+    config-dir: ~/.claude-work
+  - name: personal
+    config-dir: ~/.claude-personal
   - name: glm@hf
     provider: hf
+    config-dir: ~/.claude-hf              # optional: own session store
     models:
       default: zai-org/GLM-5.1          # -> ANTHROPIC_MODEL and --model
       opus: zai-org/GLM-5.1             # -> ANTHROPIC_DEFAULT_OPUS_MODEL
@@ -70,9 +80,37 @@ contexts:
 Model slots are optional; only present slots emit variables. Valid slots:
 `default`, `fable`, `opus`, `sonnet`, `haiku`, `subagent`.
 
+Every context needs a `provider`, a `config-dir`, or both — one with neither
+would be indistinguishable from `none`.
+
+### Config dirs
+
+`config-dir` sets `CLAUDE_CONFIG_DIR`, which is the root of everything Claude
+Code keeps per profile: credentials, `settings.json`, MCP servers, prompt
+history, and the session store.
+
+Credentials are **not** stored in the config dir. On macOS they live in the
+keychain under a service name derived from the config dir path
+(`Claude Code-credentials-<hash>`), so each config dir is separately
+authenticated and needs its own login:
+
+```sh
+CLAUDE_CONFIG_DIR=~/.claude-work claude auth login
+```
+
+Two accounts can therefore run side by side, in parallel, without logging each
+other out. Pin each profile to its intended account with `forceLoginOrgUUID` in
+that profile's `settings.json` so a mis-login fails loudly.
+
+claudectx **fails before exec** when a `config-dir` does not exist or is not a
+directory. Claude Code would otherwise bootstrap a fresh, unauthenticated
+profile there and present it as an empty history — indistinguishable from
+having lost one.
+
 ### Credentials
 
 Exactly one of `api-key`, `api-key-file`, `api-key-op` per provider.
+First-party contexts have no provider and so need none.
 
 `api-key-op` resolves a 1Password item through the `op` CLI at launch time.
 The reference is `account/vault/item`, `vault/item`, or bare `item` (names or
@@ -89,6 +127,7 @@ variables it manages, then sets:
 |---|---|
 | `ANTHROPIC_BASE_URL` | provider `base-url` (Claude Code appends `/v1/messages`) |
 | `ANTHROPIC_AUTH_TOKEN` | provider key |
+| `CLAUDE_CONFIG_DIR` | context `config-dir` (`~` expanded) |
 | `ANTHROPIC_MODEL` | models `default` |
 | `ANTHROPIC_DEFAULT_FABLE_MODEL` | models `fable` |
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | models `opus` |
@@ -97,10 +136,19 @@ variables it manages, then sets:
 | `CLAUDE_CODE_SUBAGENT_MODEL` | models `subagent` |
 | provider `env` entries | verbatim, overriding inherited values |
 
+The first two are set only for a context that has a provider; `CLAUDE_CONFIG_DIR`
+only for one that has a `config-dir`.
+
 Only `ANTHROPIC_AUTH_TOKEN` carries the key: Claude Code warns when both it
 and `ANTHROPIC_API_KEY` are set. A stale `ANTHROPIC_API_KEY` from the parent
 shell is stripped along with the other managed variables. All other
 environment variables pass through unchanged.
+
+`CLAUDE_CONFIG_DIR` is managed, so an exported value is stripped for *every*
+non-`none` context — including contexts that declare no `config-dir`, which
+therefore always land in the default `~/.claude`. This keeps the launched
+profile a function of the manifest alone. Use `--context none` to hand an
+exported `CLAUDE_CONFIG_DIR` through untouched.
 
 The `default` model is additionally passed to claude as `--model`: a model
 pinned in Claude Code settings outranks the `ANTHROPIC_MODEL` environment
@@ -118,3 +166,7 @@ was started against a different provider replays that history and typically
 fails with provider errors (HTTP 500 retry loops). Start a fresh session
 after switching contexts; use `--resume`/`--continue` only within the same
 provider.
+
+Giving each provider context its own `config-dir` largely removes the hazard:
+sessions are then stored per context, so `--resume` and `--continue` cannot
+reach a session recorded against a different provider in the first place.

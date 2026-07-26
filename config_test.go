@@ -34,7 +34,21 @@ contexts:
     provider: or
     models:
       default: zai-org/GLM-5.1
+  - name: glm-hf-dir
+    provider: hf
+    config-dir: CONFIGDIR
+    models:
+      default: zai-org/GLM-5.1
+  - name: firstparty
+    config-dir: CONFIGDIR
 `
+
+// sampleConfigDir is where writeSample materialises the CONFIGDIR
+// placeholder, relative to the manifest: the config-dir existence check needs
+// a live path, and tests need to predict it without threading it through.
+func sampleConfigDir(manifest string) string {
+	return filepath.Join(filepath.Dir(manifest), "profile")
+}
 
 func writeSample(t *testing.T) string {
 	t.Helper()
@@ -44,7 +58,11 @@ func writeSample(t *testing.T) string {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "config.yaml")
+	if err := os.Mkdir(sampleConfigDir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	content := strings.ReplaceAll(sampleConfig, "KEYFILE", keyfile)
+	content = strings.ReplaceAll(content, "CONFIGDIR", sampleConfigDir(path))
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +102,9 @@ contexts: []`,
 		"missing base-url": `
 providers: [{name: p, api-key: k}]
 contexts: []`,
+		"neither provider nor config-dir": `
+providers: [{name: p, base-url: "https://x", api-key: k}]
+contexts: [{name: c, models: {opus: x}}]`,
 	}
 	for name, content := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -197,6 +218,90 @@ func TestBuildEnvNone(t *testing.T) {
 	}
 	if !slices.Equal(env, base) {
 		t.Errorf("none context must not touch env:\n got %q\nwant %q", env, base)
+	}
+}
+
+func TestBuildEnvConfigDir(t *testing.T) {
+	path := writeSample(t)
+	cfg, err := loadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := []string{"PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/stale/profile"}
+	env, err := cfg.buildEnv("glm-hf-dir", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"PATH=/usr/bin",
+		"ANTHROPIC_BASE_URL=https://router.huggingface.co",
+		"ANTHROPIC_AUTH_TOKEN=hf_test_key",
+		"CLAUDE_CONFIG_DIR=" + sampleConfigDir(path),
+		"ANTHROPIC_MODEL=zai-org/GLM-5.1",
+		"ENABLE_TOOL_SEARCH=1",
+	}
+	if !slices.Equal(env, want) {
+		t.Errorf("env mismatch:\n got %q\nwant %q", env, want)
+	}
+	if slices.Contains(env, "CLAUDE_CONFIG_DIR=/stale/profile") {
+		t.Error("inherited CLAUDE_CONFIG_DIR leaked through")
+	}
+}
+
+func TestBuildEnvFirstParty(t *testing.T) {
+	path := writeSample(t)
+	cfg, err := loadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := cfg.buildEnv("firstparty", []string{"PATH=/usr/bin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No provider means no endpoint and no key: claude authenticates from
+	// the profile in config-dir instead.
+	want := []string{"PATH=/usr/bin", "CLAUDE_CONFIG_DIR=" + sampleConfigDir(path)}
+	if !slices.Equal(env, want) {
+		t.Errorf("env mismatch:\n got %q\nwant %q", env, want)
+	}
+}
+
+func TestBuildEnvConfigDirExpandsHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir")
+	}
+	cfg := &Config{Contexts: []Context{{Name: "c", ConfigDir: "~"}}}
+	env, err := cfg.buildEnv("c", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(env, "CLAUDE_CONFIG_DIR="+home) {
+		t.Errorf("~ not expanded: %q", env)
+	}
+}
+
+func TestBuildEnvConfigDirUnusable(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "regular-file")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]struct{ configDir, wantErr string }{
+		"missing":   {filepath.Join(dir, "nope"), "does not exist"},
+		"not a dir": {file, "is not a directory"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := &Config{Contexts: []Context{{Name: "c", ConfigDir: tc.configDir}}}
+			_, err := cfg.buildEnv("c", nil)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error %q, want it to contain %q", err, tc.wantErr)
+			}
+		})
 	}
 }
 

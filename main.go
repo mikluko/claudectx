@@ -23,7 +23,7 @@ func versionString() string {
 	return "dev"
 }
 
-const usage = `claudectx — launch Claude Code with provider contexts
+const usage = `claudectx — launch Claude Code with provider and profile contexts
 
 Usage:
   claudectx [claude args...]                 run the default context
@@ -33,8 +33,9 @@ Usage:
 When NAME is omitted (and when running without a default context set),
 an interactive fzf selector is presented on TTYs.
 
-The reserved context name "none" runs claude with the environment
-untouched, as if claudectx were not involved.
+A context selects an endpoint and models (via a provider), a Claude Code
+profile (via config-dir), or both. The reserved context name "none" runs
+claude with the environment untouched, as if claudectx were not involved.
 
 Manifest: ~/.config/claudectx/config.yaml (override with CLAUDECTX_CONFIG)
 `

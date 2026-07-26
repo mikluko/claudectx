@@ -18,10 +18,29 @@ func contextLines(cfg *Config) []string {
 	}
 	lines := make([]string, 0, len(cfg.Contexts)+1)
 	for _, x := range cfg.Contexts {
-		lines = append(lines, fmt.Sprintf("%-*s  provider=%s model=%s", width, x.Name, x.Provider, x.Models["default"]))
+		lines = append(lines, fmt.Sprintf("%-*s  %s", width, x.Name, contextDetail(x)))
 	}
 	lines = append(lines, fmt.Sprintf("%-*s  passthrough, environment untouched", width, NoneContext))
 	return lines
+}
+
+// contextDetail describes a context after its name in the picker. Only
+// populated fields appear: a first-party context has no provider or model to
+// show, and its config-dir is what distinguishes it from its siblings.
+func contextDetail(x Context) string {
+	var parts []string
+	if x.Provider != "" {
+		parts = append(parts, "provider="+x.Provider)
+		if m := x.Models["default"]; m != "" {
+			parts = append(parts, "model="+m)
+		}
+	} else {
+		parts = append(parts, "subscription")
+	}
+	if x.ConfigDir != "" {
+		parts = append(parts, "config-dir="+x.ConfigDir)
+	}
+	return strings.Join(parts, " ")
 }
 
 // pickContext presents an fzf selector on the controlling terminal and

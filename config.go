@@ -38,9 +38,15 @@ type Provider struct {
 }
 
 type Context struct {
-	Name     string            `yaml:"name"`
-	Provider string            `yaml:"provider"`
-	Models   map[string]string `yaml:"models"`
+	Name string `yaml:"name"`
+	// Provider is optional: a context without one is first-party, and
+	// authenticates through claude's own login rather than an API key.
+	Provider string `yaml:"provider,omitempty"`
+	// ConfigDir sets CLAUDE_CONFIG_DIR, giving the context its own Claude
+	// Code profile — separate credentials (the macOS keychain service name
+	// is derived from this path), settings, and session store.
+	ConfigDir string            `yaml:"config-dir,omitempty"`
+	Models    map[string]string `yaml:"models,omitempty"`
 }
 
 // modelEnvVars maps workingset model slots to the Claude Code environment
@@ -71,6 +77,7 @@ var managedEnvVars = []string{
 	"ANTHROPIC_DEFAULT_SONNET_MODEL",
 	"ANTHROPIC_DEFAULT_HAIKU_MODEL",
 	"CLAUDE_CODE_SUBAGENT_MODEL",
+	"CLAUDE_CONFIG_DIR",
 }
 
 func configPath() (string, error) {
@@ -131,7 +138,11 @@ func (c *Config) validate() error {
 			return fmt.Errorf("duplicate context %q", x.Name)
 		}
 		contexts[x.Name] = true
-		if !providers[x.Provider] {
+		// A context with neither is indistinguishable from "none".
+		if x.Provider == "" && x.ConfigDir == "" {
+			return fmt.Errorf("context %q: provider or config-dir required", x.Name)
+		}
+		if x.Provider != "" && !providers[x.Provider] {
 			return fmt.Errorf("context %q: unknown provider %q", x.Name, x.Provider)
 		}
 		for slot := range x.Models {
@@ -204,6 +215,24 @@ func expandHome(path string) string {
 	return path
 }
 
+// checkConfigDir fails early on a missing config-dir. Claude Code would
+// otherwise bootstrap a fresh, unauthenticated profile there and present it
+// as an empty history — indistinguishable from having lost one. The raw
+// (unexpanded) form is reported so the message echoes the manifest.
+func checkConfigDir(ctxName, raw, path string) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("context %q: config-dir %s does not exist", ctxName, raw)
+		}
+		return fmt.Errorf("context %q: config-dir %s: %w", ctxName, raw, err)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("context %q: config-dir %s is not a directory", ctxName, raw)
+	}
+	return nil
+}
+
 // buildEnv returns the full environment for launching claude under the named
 // context. The reserved context "none" returns base unchanged.
 func (c *Config) buildEnv(name string, base []string) ([]string, error) {
@@ -214,26 +243,47 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	prov := c.provider(ctx.Provider)
-	key, err := prov.apiKey()
-	if err != nil {
-		return nil, err
+	// A first-party context has no provider: no endpoint and no key, so
+	// claude authenticates itself from the profile in config-dir.
+	var prov *Provider
+	var key string
+	if ctx.Provider != "" {
+		prov = c.provider(ctx.Provider)
+		if key, err = prov.apiKey(); err != nil {
+			return nil, err
+		}
+	}
+	var configDir string
+	if ctx.ConfigDir != "" {
+		configDir = expandHome(ctx.ConfigDir)
+		if err := checkConfigDir(ctx.Name, ctx.ConfigDir, configDir); err != nil {
+			return nil, err
+		}
 	}
 
-	env := make([]string, 0, len(base)+len(managedEnvVars)+len(prov.Env))
+	var provEnv map[string]string
+	if prov != nil {
+		provEnv = prov.Env
+	}
+	env := make([]string, 0, len(base)+len(managedEnvVars)+len(provEnv))
 	for _, kv := range base {
-		if isManagedEnv(kv) || isProviderEnv(kv, prov.Env) {
+		if isManagedEnv(kv) || isProviderEnv(kv, provEnv) {
 			continue
 		}
 		env = append(env, kv)
 	}
-	// Only ANTHROPIC_AUTH_TOKEN carries the key: Claude Code warns when
-	// both it and ANTHROPIC_API_KEY are set. Stale ANTHROPIC_API_KEY
-	// values are stripped above via managedEnvVars.
-	env = append(env,
-		"ANTHROPIC_BASE_URL="+prov.BaseURL,
-		"ANTHROPIC_AUTH_TOKEN="+key,
-	)
+	if prov != nil {
+		// Only ANTHROPIC_AUTH_TOKEN carries the key: Claude Code warns when
+		// both it and ANTHROPIC_API_KEY are set. Stale ANTHROPIC_API_KEY
+		// values are stripped above via managedEnvVars.
+		env = append(env,
+			"ANTHROPIC_BASE_URL="+prov.BaseURL,
+			"ANTHROPIC_AUTH_TOKEN="+key,
+		)
+	}
+	if configDir != "" {
+		env = append(env, "CLAUDE_CONFIG_DIR="+configDir)
+	}
 	// Deterministic slot order regardless of map iteration.
 	for _, slot := range modelSlots {
 		model := ctx.Models[slot]
@@ -244,8 +294,8 @@ func (c *Config) buildEnv(name string, base []string) ([]string, error) {
 			env = append(env, v+"="+model)
 		}
 	}
-	for _, k := range slices.Sorted(maps.Keys(prov.Env)) {
-		env = append(env, k+"="+prov.Env[k])
+	for _, k := range slices.Sorted(maps.Keys(provEnv)) {
+		env = append(env, k+"="+provEnv[k])
 	}
 	return env, nil
 }

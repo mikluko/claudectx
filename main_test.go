@@ -121,3 +121,33 @@ func TestContextLines(t *testing.T) {
 		t.Errorf("parsed name %q", name)
 	}
 }
+
+func TestContextDetail(t *testing.T) {
+	cases := []struct {
+		name string
+		ctx  Context
+		want string
+	}{
+		{"provider and model",
+			Context{Name: "a", Provider: "hf", Models: map[string]string{"default": "glm"}},
+			"provider=hf model=glm"},
+		{"provider without default slot",
+			Context{Name: "a", Provider: "hf"},
+			"provider=hf"},
+		{"provider with config dir",
+			Context{Name: "a", Provider: "hf", ConfigDir: "~/.claude-hf",
+				Models: map[string]string{"default": "glm"}},
+			"provider=hf model=glm config-dir=~/.claude-hf"},
+		// First-party contexts are told apart by their config-dir alone.
+		{"first party",
+			Context{Name: "a", ConfigDir: "~/.claude-uptime"},
+			"subscription config-dir=~/.claude-uptime"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := contextDetail(tc.ctx); got != tc.want {
+				t.Errorf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
